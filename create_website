@@ -1,0 +1,109 @@
+#!/usr/bin/env python3
+import os
+import sys
+import subprocess
+from os import path
+
+APACHE_SITES_AVAILABLE = "/etc/apache2/sites-available"
+PROJECT_ROOT_DIRECTORY = "/home/john_ubuntu/web"
+
+
+def main() -> None:
+    project_create_success = []
+    _, *project_names = sys.argv
+
+    if not project_names:
+        show_help()
+        return
+
+    terminate_if_not_sudo()
+
+    for project_name in project_names:
+        if check_if_project_exists(project_name):
+            continue
+
+        create_project_directory(project_name)
+        create_sample_html(project_name)
+        create_apache_config(project_name)
+        enable_apache_config(project_name)
+
+        project_create_success.append(project_name)
+
+    if project_create_success:
+        restart_apache()
+        print("You project is now ready!")
+        for project_name in project_create_success:
+            print(f"http://{project_name}.localhost/")
+
+
+def check_if_project_exists(project_name: str) -> bool:
+    if path.exists(path.join(PROJECT_ROOT_DIRECTORY, project_name)):
+        print(f"Unable to create \"{project_name}\". "
+              "Project already exists.")
+        return True
+    if path.exists(path.join(APACHE_SITES_AVAILABLE, f"{project_name}.conf")):
+        print(f"Unable to create \"{project_name}\". "
+              "An apache config file still exists for the project.")
+        return True
+    return False
+
+
+def create_project_directory(project_name: str) -> None:
+    os.mkdir(path.join(PROJECT_ROOT_DIRECTORY, project_name))
+
+
+def create_sample_html(project_name: str) -> None:
+    html_file = path.join(PROJECT_ROOT_DIRECTORY, project_name, "index.html")
+    with open(html_file, "w") as file:
+        file.write(f"""\
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{project_name}</title>
+</head>
+<body>
+    <h1>Welcome!</h1>
+    <p>Your <strong>{project_name}</strong> website is now ready.</p>
+</body>
+</html>
+""")
+
+
+def create_apache_config(project_name: str) -> None:
+    config_file = path.join(APACHE_SITES_AVAILABLE, f"{project_name}.conf")
+    with open(config_file, "w") as file:
+        contents = f"""\
+<VirtualHost *:80>
+    ServerName {project_name}.localhost
+    ServerAlias {project_name}.localhost
+    ServerAdmin webmaster@{project_name}.localhost
+    DocumentRoot /var/www/web/{project_name}
+    ErrorLog ${{APACHE_LOG_DIR}}/error.log
+    CustomLog ${{APACHE_LOG_DIR}}/access.log combined
+</VirtualHost>
+"""
+        file.write(contents)
+
+
+def enable_apache_config(project_name: str) -> None:
+    subprocess.run(["a2ensite", project_name], stdout=subprocess.DEVNULL)
+
+
+def restart_apache() -> None:
+    subprocess.run(["systemctl", "restart", "apache2"])
+
+
+def show_help() -> None:
+    print("create_website - Creates a new virtual host in Apache\n")
+    print("Usage:")
+    print("create_website [projectname1] [projectname2]...")
+
+
+def terminate_if_not_sudo() -> None:
+    if os.geteuid() != 0:
+        print("Error! You need to run this command with sudo.")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

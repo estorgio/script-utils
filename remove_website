@@ -1,0 +1,81 @@
+#!/usr/bin/env python3
+import os
+import sys
+import subprocess
+import shutil
+from os import path
+
+APACHE_SITES_AVAILABLE = "/etc/apache2/sites-available"
+PROJECT_ROOT_DIRECTORY = "/home/john_ubuntu/web"
+
+
+def main() -> None:
+    project_remove_success = []
+    _, *project_names = sys.argv
+
+    if not project_names:
+        show_help()
+        return
+
+    terminate_if_not_sudo()
+
+    for project_name in project_names:
+        if check_if_project_doesnt_exists(project_name):
+            continue
+
+        disable_apache_config(project_name)
+        remove_apache_config(project_name)
+        remove_project_directory(project_name)
+
+        project_remove_success.append(project_name)
+
+    if project_remove_success:
+        restart_apache()
+        print("You projects have been removed!")
+        for project_name in project_remove_success:
+            print(project_name)
+
+
+def remove_project_directory(project_name: str) -> None:
+    shutil.rmtree(path.join(PROJECT_ROOT_DIRECTORY, project_name))
+
+
+def remove_apache_config(project_name: str) -> None:
+    config_file = path.join(APACHE_SITES_AVAILABLE, f"{project_name}.conf")
+    os.remove(config_file)
+
+
+def disable_apache_config(project_name: str) -> None:
+    subprocess.run(["a2dissite", project_name], stdout=subprocess.DEVNULL)
+
+
+def check_if_project_doesnt_exists(project_name: str) -> bool:
+    if not path.exists(path.join(PROJECT_ROOT_DIRECTORY, project_name)):
+        print(f"Unable to remove \"{project_name}\". "
+              "Project directory doesn't exists")
+        return True
+    if not path.exists(path.join(APACHE_SITES_AVAILABLE, f"{project_name}.conf")):
+        print(f"Unable to remove \"{project_name}\". "
+              "The apache config file doesn't exists for the project.")
+        return True
+    return False
+
+
+def restart_apache() -> None:
+    subprocess.run(["systemctl", "restart", "apache2"])
+
+
+def show_help() -> None:
+    print("remove_website - Removes an existing virtual host in Apache\n")
+    print("Usage:")
+    print("remove_website [projectname1] [projectname2]...")
+
+
+def terminate_if_not_sudo() -> None:
+    if os.geteuid() != 0:
+        print("Error! You need to run this command with sudo.")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
